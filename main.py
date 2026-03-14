@@ -21,13 +21,41 @@ app.add_middleware(
 def get_history(ticker: str, years: int) -> pd.DataFrame:
     end = datetime.today()
     start = end - timedelta(days=years * 365 + 60)
-    try:
-        t = yf.Ticker(ticker)
-        df = t.history(start=start, end=end, auto_adjust=True)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching {ticker}: {str(e)}")
+    
+    last_err = None
+    for attempt in range(3):
+        try:
+            import time
+            if attempt > 0:
+                time.sleep(2 * attempt)
+            
+            # Use session with browser-like headers to avoid rate limiting
+            import requests
+            session = requests.Session()
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+            })
+            t = yf.Ticker(ticker, session=session)
+            df = t.history(start=start, end=end, auto_adjust=True)
+            
+            if df is not None and not df.empty:
+                break
+            last_err = f"No data returned for '{ticker}'"
+        except Exception as e:
+            last_err = str(e)
+            if "rate limit" in last_err.lower() or "too many" in last_err.lower():
+                continue
+            break
+    else:
+        raise HTTPException(status_code=500, detail=f"Yahoo Finance rate limit. Wait a moment and retry. ({last_err})")
+    
     if df is None or df.empty:
-        raise HTTPException(status_code=404, detail=f"No data found for '{ticker}'. Try a different symbol or market suffix (e.g. GGAL.BA for Buenos Aires).")
+        raise HTTPException(status_code=404, detail=f"No data found for '{ticker}'. Check the ticker symbol (e.g. GGAL.BA for Buenos Aires).")
+    
     # Flatten MultiIndex if present
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
@@ -43,6 +71,23 @@ def get_history(ticker: str, years: int) -> pd.DataFrame:
     if len(df) < 20:
         raise HTTPException(status_code=404, detail=f"Not enough data for '{ticker}' ({len(df)} rows).")
     return df
+
+import time as _time
+_cache = {}
+_CACHE_TTL = 300  # 5 minutes
+
+def _cache_key(ticker, years):
+    return f"{ticker}_{years}"
+
+def get_history_cached(ticker: str, years: int) -> pd.DataFrame:
+    key = _cache_key(ticker, years)
+    now = _time.time()
+    if key in _cache and now - _cache[key][0] < _CACHE_TTL:
+        return _cache[key][1].copy()
+    df = get_history_cached(ticker, years)
+    _cache[key] = (now, df)
+    return df.copy()
+
 
 def safe(v):
     if v is None or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
@@ -108,7 +153,7 @@ async def search_ticker(q: str):
 @app.get("/drawdown")
 def drawdown(ticker: str, threshold: float = 30, horizon: int = 365, years: int = 10):
     ticker = ticker.upper().strip()
-    df = get_history(ticker, years)
+    df = get_history_cached(ticker, years)
     closes = df["close"]
     events = []
     peak = closes.iloc[0]
@@ -144,7 +189,7 @@ def drawdown(ticker: str, threshold: float = 30, horizon: int = 365, years: int 
 @app.get("/dayfall")
 def dayfall(ticker: str, threshold: float = 10, horizon: int = 365, years: int = 10):
     ticker = ticker.upper().strip()
-    df = get_history(ticker, years)
+    df = get_history_cached(ticker, years)
     df = df.copy()
     df["day_ret"] = df["close"].pct_change() * 100
     events = []
@@ -170,7 +215,7 @@ def dayfall(ticker: str, threshold: float = 10, horizon: int = 365, years: int =
 @app.get("/streak")
 def streak(ticker: str, min_days: int = 5, horizon: int = 90, years: int = 10):
     ticker = ticker.upper().strip()
-    df = get_history(ticker, years)
+    df = get_history_cached(ticker, years)
     df = df.copy()
     df["day_ret"] = df["close"].pct_change()
     events = []
@@ -204,7 +249,7 @@ def streak(ticker: str, min_days: int = 5, horizon: int = 90, years: int = 10):
 @app.get("/volatility")
 def volatility(ticker: str, window: int = 20, percentile: int = 85, horizon: int = 90, years: int = 10):
     ticker = ticker.upper().strip()
-    df = get_history(ticker, years)
+    df = get_history_cached(ticker, years)
     df = df.copy()
     df["day_ret"] = df["close"].pct_change()
     df["vol"] = df["day_ret"].rolling(window).std() * np.sqrt(252) * 100
@@ -242,7 +287,7 @@ def volatility(ticker: str, window: int = 20, percentile: int = 85, horizon: int
 @app.get("/seasonality")
 def seasonality(ticker: str, years: int = 10):
     ticker = ticker.upper().strip()
-    df = get_history(ticker, years)
+    df = get_history_cached(ticker, years)
     monthly = df["close"].resample("MS").last().pct_change() * 100
     monthly = monthly.dropna()
     month_names = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"]
@@ -263,7 +308,7 @@ def seasonality(ticker: str, years: int = 10):
 @app.get("/candles")
 def candles(ticker: str, years: int = 10, events: str = ""):
     ticker = ticker.upper().strip()
-    df = get_history(ticker, years)
+    df = get_history_cached(ticker, years)
     monthly = df.resample("MS").agg({"open":"first","high":"max","low":"min","close":"last"}).dropna()
     candle_list = [
         {"time": row.Index.strftime("%Y-%m-%d"),
