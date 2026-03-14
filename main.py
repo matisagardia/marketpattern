@@ -21,47 +21,63 @@ app.add_middleware(
 def get_history(ticker: str, years: int) -> pd.DataFrame:
     end = datetime.today()
     start = end - timedelta(days=years * 365 + 60)
-    
-    last_err = None
-    for attempt in range(3):
+
+    # Strategy 1: yfinance with rotating browser User-Agents
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    ]
+    import requests as _req, time as _time, random as _random
+
+    last_err = "Unknown error"
+    for attempt in range(4):
         try:
-            import time
             if attempt > 0:
-                time.sleep(2 * attempt)
-            
-            # Use session with browser-like headers to avoid rate limiting
-            import requests
-            session = requests.Session()
+                _time.sleep(3 * attempt + _random.uniform(1, 3))
+
+            session = _req.Session()
+            ua = user_agents[attempt % len(user_agents)]
             session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
+                "User-Agent": ua,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
                 "Accept-Encoding": "gzip, deflate, br",
                 "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Cache-Control": "max-age=0",
             })
+
             t = yf.Ticker(ticker, session=session)
             df = t.history(start=start, end=end, auto_adjust=True)
-            
+
             if df is not None and not df.empty:
                 break
-            last_err = f"No data returned for '{ticker}'"
+            last_err = f"Empty response on attempt {attempt+1}"
+
         except Exception as e:
             last_err = str(e)
-            if "rate limit" in last_err.lower() or "too many" in last_err.lower():
+            if "401" in last_err or "too many" in last_err.lower() or "rate" in last_err.lower():
+                continue
+            # Non-rate-limit error, still retry once
+            if attempt < 2:
                 continue
             break
     else:
-        raise HTTPException(status_code=500, detail=f"Yahoo Finance rate limit. Wait a moment and retry. ({last_err})")
-    
+        raise HTTPException(status_code=500, detail=f"Yahoo Finance is rate limiting this server. Try again in 1-2 minutes. ({last_err})")
+
     if df is None or df.empty:
-        raise HTTPException(status_code=404, detail=f"No data found for '{ticker}'. Check the ticker symbol (e.g. GGAL.BA for Buenos Aires).")
-    
-    # Flatten MultiIndex if present
+        raise HTTPException(status_code=404, detail=f"No data found for '{ticker}'. Check the symbol (e.g. use GGAL.BA for Buenos Aires stocks).")
+
+    # Normalize columns
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     df.columns = [c.lower() for c in df.columns]
     if "close" not in df.columns:
-        raise HTTPException(status_code=500, detail=f"Unexpected data format for {ticker}")
+        raise HTTPException(status_code=500, detail=f"Unexpected data format for {ticker}: {list(df.columns)}")
     for col in ["open", "high", "low"]:
         if col not in df.columns:
             df[col] = df["close"]
@@ -72,20 +88,46 @@ def get_history(ticker: str, years: int) -> pd.DataFrame:
         raise HTTPException(status_code=404, detail=f"Not enough data for '{ticker}' ({len(df)} rows).")
     return df
 
-import time as _time
-_cache = {}
-_CACHE_TTL = 300  # 5 minutes
+
+
+import time as _time, os as _os, pickle as _pickle
+
+_MEM_CACHE = {}
+_CACHE_TTL  = 1800    # 30 min memory
+_DISK_TTL   = 86400   # 24h disk
+_DISK_DIR   = "/tmp/yf_cache"
+_os.makedirs(_DISK_DIR, exist_ok=True)
 
 def _cache_key(ticker, years):
-    return f"{ticker}_{years}"
+    return f"{ticker.upper()}_{years}"
 
 def get_history_cached(ticker: str, years: int) -> pd.DataFrame:
     key = _cache_key(ticker, years)
     now = _time.time()
-    if key in _cache and now - _cache[key][0] < _CACHE_TTL:
-        return _cache[key][1].copy()
+
+    # 1. Memory cache
+    if key in _MEM_CACHE and now - _MEM_CACHE[key][0] < _CACHE_TTL:
+        return _MEM_CACHE[key][1].copy()
+
+    # 2. Disk cache
+    disk_path = f"{_DISK_DIR}/{key}.pkl"
+    if _os.path.exists(disk_path) and (now - _os.path.getmtime(disk_path)) < _DISK_TTL:
+        try:
+            with open(disk_path, "rb") as f:
+                df = _pickle.load(f)
+            _MEM_CACHE[key] = (now, df)
+            return df.copy()
+        except Exception:
+            pass
+
+    # 3. Fetch from Yahoo
     df = get_history(ticker, years)
-    _cache[key] = (now, df)
+    _MEM_CACHE[key] = (now, df)
+    try:
+        with open(disk_path, "wb") as f2:
+            _pickle.dump(df, f2)
+    except Exception:
+        pass
     return df.copy()
 
 
