@@ -84,7 +84,7 @@ def get_history_cached(ticker: str, years: int) -> pd.DataFrame:
     now = _time.time()
     if key in _cache and now - _cache[key][0] < _CACHE_TTL:
         return _cache[key][1].copy()
-    df = get_history_cached(ticker, years)
+    df = get_history(ticker, years)
     _cache[key] = (now, df)
     return df.copy()
 
