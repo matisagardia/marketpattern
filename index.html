@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market Pattern Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+:root{--bg:#07080a;--s1:#0d0f14;--s2:#12151d;--s3:#181c27;--b1:#1f2535;--b2:#2a3045;--green:#00ff88;--red:#ff3d5a;--blue:#4d9fff;--yellow:#ffd60a;--purple:#b57bee;--text:#e2e8f5;--muted:#4a5268;--label:#7a8299;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,136,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,136,.025) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+.wrap{position:relative;z-index:1;max-width:1300px;margin:0 auto;padding:2rem 1.5rem 6rem;}
+h1{font-family:'Syne',sans-serif;font-size:2.1rem;font-weight:800;letter-spacing:-.03em;}
+h1 em{font-style:italic;color:var(--green);font-family:'Instrument Serif',serif;}
+.subtitle{font-size:.7rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-top:.4rem;}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;margin-bottom:2.5rem;}
+.badge{display:inline-flex;align-items:center;gap:.4rem;font-size:.7rem;color:var(--label);background:var(--s2);border:1px solid var(--b1);padding:.35rem .8rem;border-radius:20px;}
+.badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* API URL banner */
+.api-bar{background:var(--s2);border:1px solid var(--b2);border-radius:10px;padding:.7rem 1rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;}
+.api-bar label{font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;white-space:nowrap;}
+.api-bar input{flex:1;min-width:200px;background:var(--s3);border:1px solid var(--b2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.78rem;padding:.45rem .7rem;border-radius:6px;outline:none;}
+.api-bar input:focus{border-color:rgba(0,255,136,.4);}
+.api-status{font-size:.65rem;padding:.3rem .7rem;border-radius:6px;white-space:nowrap;}
+.api-status.ok{background:rgba(0,255,136,.1);color:var(--green);border:1px solid rgba(0,255,136,.2);}
+.api-status.err{background:rgba(255,61,90,.1);color:var(--red);border:1px solid rgba(255,61,90,.2);}
+.api-status.checking{background:rgba(77,159,255,.1);color:var(--blue);border:1px solid rgba(77,159,255,.2);}
+
+.tabs{display:flex;gap:.3rem;background:var(--s1);border:1px solid var(--b1);padding:.3rem;border-radius:12px;flex-wrap:wrap;margin-bottom:2rem;}
+.tab{flex:1;min-width:105px;padding:.6rem .8rem;background:transparent;border:none;cursor:pointer;font-family:'Syne',sans-serif;font-size:.76rem;font-weight:700;color:var(--muted);border-radius:9px;transition:all .2s;text-align:center;white-space:nowrap;}
+.tab:hover{color:var(--text);background:var(--s3);}
+.tab.active{background:var(--s3);color:var(--green);border:1px solid rgba(0,255,136,.2);}
+.panel{display:none;animation:fi .3s ease;}
+.panel.active{display:block;}
+@keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.box{background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:1.5rem;margin-bottom:1.5rem;}
+.box-title{font-family:'Syne',sans-serif;font-weight:700;font-size:.85rem;color:var(--label);text-transform:uppercase;letter-spacing:.1em;margin-bottom:1rem;padding-bottom:.5rem;border-bottom:1px solid var(--b1);}
+.row{display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;}
+.fg{display:flex;flex-direction:column;gap:.35rem;flex:1;min-width:120px;}
+.fg label{font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;}
+.fg input,.fg select{background:var(--s2);border:1px solid var(--b2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.83rem;padding:.6rem .8rem;border-radius:8px;outline:none;transition:border-color .2s;-webkit-appearance:none;}
+.fg input:focus,.fg select:focus{border-color:rgba(0,255,136,.4);}
+.fg select option{background:var(--s2);}
+.btn{padding:.65rem 1.4rem;border:none;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:.78rem;border-radius:8px;transition:all .2s;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;}
+.btn-g{background:var(--green);color:#000;box-shadow:0 0 18px rgba(0,255,136,.25);}
+.btn-g:hover{transform:translateY(-1px);box-shadow:0 4px 24px rgba(0,255,136,.35);}
+.btn-g:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.btn-s{background:var(--s3);color:var(--text);border:1px solid var(--b2);}
+.btn-s:hover{border-color:var(--blue);color:var(--blue);}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:.8rem;margin-bottom:1.5rem;}
+.sc{background:var(--s2);border:1px solid var(--b1);border-radius:12px;padding:1rem 1.1rem;}
+.sc .l{font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.35rem;}
+.sc .v{font-family:'Syne',sans-serif;font-size:1.5rem;font-weight:700;line-height:1;letter-spacing:-.02em;}
+.sc .s{font-size:.63rem;color:var(--label);margin-top:.25rem;}
+.cg{color:var(--green)}.cr{color:var(--red)}.cy{color:var(--yellow)}.cb{color:var(--blue)}.cp{color:var(--purple)}.cw{color:var(--text)}
+.cbox{background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:1.4rem;margin-bottom:1rem;}
+.cbox h3{font-family:'Syne',sans-serif;font-size:.83rem;font-weight:700;margin-bottom:.25rem;}
+.cbox p{font-size:.66rem;color:var(--muted);margin-bottom:1.1rem;}
+.cwrap{position:relative;height:300px;}
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.8rem;padding:3rem;}
+.spin{width:26px;height:26px;border-radius:50%;border:2px solid var(--b2);border-top-color:var(--green);animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.err{background:rgba(255,61,90,.12);border:1px solid rgba(255,61,90,.3);border-radius:10px;padding:1rem 1.2rem;font-size:.76rem;color:var(--red);line-height:1.6;}
+.twocol{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
+@media(max-width:680px){.twocol{grid-template-columns:1fr;}}
+.etw{overflow-x:auto;}
+table.et{width:100%;border-collapse:separate;border-spacing:0 3px;font-size:.74rem;min-width:520px;}
+table.et thead th{font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:.35rem .7rem;text-align:right;}
+table.et thead th:first-child{text-align:left;}
+table.et tbody tr{background:var(--s2);}
+table.et tbody tr:hover{background:var(--s3);}
+table.et tbody td{padding:.6rem .7rem;text-align:right;}
+table.et tbody td:first-child{border-radius:8px 0 0 8px;text-align:left;}
+table.et tbody td:last-child{border-radius:0 8px 8px 0;}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.mgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;margin-top:.8rem;}
+.mc{border-radius:9px;padding:.8rem .4rem;text-align:center;border:1px solid var(--b1);}
+.mn{font-size:.62rem;color:var(--label);margin-bottom:.3rem;text-transform:uppercase;}
+.mr{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;}
+.ttags{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.4rem;}
+.ttag{background:var(--s3);border:1px solid var(--b2);color:var(--text);font-size:.7rem;padding:.2rem .6rem;border-radius:6px;cursor:pointer;}
+.ttag:hover{border-color:var(--red);color:var(--red);}
+.canwrap{height:420px;width:100%;border-radius:8px;overflow:hidden;}
+.ev-legend{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:.8rem;}
+.ev-leg-item{display:flex;align-items:center;gap:.35rem;font-size:.68rem;color:var(--label);}
+.ev-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+
+/* Ticker autocomplete */
+.ac-wrap{position:relative;}
+.ac-drop{position:absolute;top:100%;left:0;right:0;background:var(--s2);border:1px solid rgba(0,255,136,.3);border-top:none;border-radius:0 0 8px 8px;z-index:100;max-height:220px;overflow-y:auto;display:none;}
+.ac-drop.open{display:block;}
+.ac-item{padding:.55rem .8rem;cursor:pointer;display:flex;align-items:center;gap:.6rem;border-bottom:1px solid var(--b1);}
+.ac-item:last-child{border-bottom:none;}
+.ac-item:hover,.ac-item.selected{background:var(--s3);}
+.ac-sym{font-family:'Syne',sans-serif;font-weight:700;font-size:.82rem;color:var(--green);min-width:80px;}
+.ac-name{font-size:.7rem;color:var(--label);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ac-exch{font-size:.62rem;color:var(--muted);white-space:nowrap;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div>
+      <h1>Market <em>Pattern</em> Analyzer</h1>
+      <div class="subtitle">// análisis estadístico de eventos históricos · datos reales via yahoo finance</div>
+    </div>
+    <div class="badge">Yahoo Finance · Datos Reales</div>
+  </div>
+
+  <!-- API URL config -->
+  <div class="api-bar">
+    <label>Backend URL</label>
+    <input id="api-url" value="https://marketpattern.onrender.com" placeholder="https://tu-api.onrender.com">
+    <button class="btn btn-s" style="padding:.45rem .9rem;font-size:.72rem;" onclick="checkHealth()">TEST</button>
+    <span class="api-status checking" id="api-status">sin verificar</span>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('dd',this)">📉 Drawdown</button>
+    <button class="tab" onclick="switchTab('df',this)">⚡ Caída 1 Día</button>
+    <button class="tab" onclick="switchTab('st',this)">🔴 Rachas</button>
+    <button class="tab" onclick="switchTab('vl',this)">🌊 Volatilidad</button>
+    <button class="tab" onclick="switchTab('sea',this)">📅 Estacionalidad</button>
+    <button class="tab" onclick="switchTab('cmp',this)">⚖️ Comparar</button>
+  </div>
+
+  <div id="p-dd" class="panel active">
+    <div class="box">
+      <div class="box-title">Drawdown desde Máximo</div>
+      <div class="row">
+        <div class="fg"><label>Ticker</label><div class="ac-wrap"><input id="dd-t" value="MELI" autocomplete="off" oninput="acInput(this,'dd-t-drop')" onkeydown="acKey(event,'dd-t-drop','dd-t')" onfocus="acInput(this,'dd-t-drop')"><div class="ac-drop" id="dd-t-drop"></div></div></div>
+        <div class="fg"><label>Caída mínima (%)</label><input id="dd-p" type="number" value="30" min="5" max="80"></div>
+        <div class="fg"><label>Horizonte forward</label>
+          <select id="dd-h"><option value="30">30 días</option><option value="60">60 días</option><option value="90">90 días</option><option value="180">180 días</option><option value="365" selected>1 año</option><option value="730">2 años</option><option value="1095">3 años</option><option value="1825">5 años</option></select></div>
+        <div class="fg"><label>Período histórico</label>
+          <select id="dd-y"><option value="5">5 años</option><option value="10" selected>10 años</option><option value="15">15 años</option><option value="20">20 años</option></select></div>
+        <button class="btn btn-g" id="btn-dd" onclick="runAnalysis('dd')">ANALIZAR</button>
+      </div>
+    </div>
+    <div id="r-dd"></div>
+  </div>
+
+  <div id="p-df" class="panel">
+    <div class="box">
+      <div class="box-title">Caída en 1 Día</div>
+      <div class="row">
+        <div class="fg"><label>Ticker</label><div class="ac-wrap"><input id="df-t" value="MELI" autocomplete="off" oninput="acInput(this,'df-t-drop')" onkeydown="acKey(event,'df-t-drop','df-t')" onfocus="acInput(this,'df-t-drop')"><div class="ac-drop" id="df-t-drop"></div></div></div>
+        <div class="fg"><label>Caída mínima en 1 día (%)</label><input id="df-p" type="number" value="10" min="1" max="50"></div>
+        <div class="fg"><label>Horizonte forward</label>
+          <select id="df-h"><option value="5">5 días</option><option value="30">30 días</option><option value="60">60 días</option><option value="90">90 días</option><option value="180">180 días</option><option value="365" selected>1 año</option><option value="730">2 años</option><option value="1825">5 años</option></select></div>
+        <div class="fg"><label>Período histórico</label>
+          <select id="df-y"><option value="5">5 años</option><option value="10" selected>10 años</option><option value="15">15 años</option></select></div>
+        <button class="btn btn-g" id="btn-df" onclick="runAnalysis('df')">ANALIZAR</button>
+      </div>
+    </div>
+    <div id="r-df"></div>
+  </div>
+
+  <div id="p-st" class="panel">
+    <div class="box">
+      <div class="box-title">Rachas de Días Bajando</div>
+      <div class="row">
+        <div class="fg"><label>Ticker</label><div class="ac-wrap"><input id="st-t" value="MELI" autocomplete="off" oninput="acInput(this,'st-t-drop')" onkeydown="acKey(event,'st-t-drop','st-t')" onfocus="acInput(this,'st-t-drop')"><div class="ac-drop" id="st-t-drop"></div></div></div>
+        <div class="fg"><label>Días consecutivos (mín)</label><input id="st-d" type="number" value="5" min="3" max="15"></div>
+        <div class="fg"><label>Horizonte forward</label>
+          <select id="st-h"><option value="30">30 días</option><option value="60">60 días</option><option value="90" selected>90 días</option><option value="180">180 días</option><option value="365">1 año</option><option value="730">2 años</option><option value="1825">5 años</option></select></div>
+        <div class="fg"><label>Período histórico</label>
+          <select id="st-y"><option value="5">5 años</option><option value="10" selected>10 años</option><option value="15">15 años</option></select></div>
+        <button class="btn btn-g" id="btn-st" onclick="runAnalysis('st')">ANALIZAR</button>
+      </div>
+    </div>
+    <div id="r-st"></div>
+  </div>
+
+  <div id="p-vl" class="panel">
+    <div class="box">
+      <div class="box-title">Post-Alta Volatilidad</div>
+      <div class="row">
+        <div class="fg"><label>Ticker</label><div class="ac-wrap"><input id="vl-t" value="MELI" autocomplete="off" oninput="acInput(this,'vl-t-drop')" onkeydown="acKey(event,'vl-t-drop','vl-t')" onfocus="acInput(this,'vl-t-drop')"><div class="ac-drop" id="vl-t-drop"></div></div></div>
+        <div class="fg"><label>Ventana (días)</label>
+          <select id="vl-w"><option value="10">10 días</option><option value="20" selected>20 días</option><option value="30">30 días</option></select></div>
+        <div class="fg"><label>Umbral</label>
+          <select id="vl-pc"><option value="75">Top 25%</option><option value="85" selected>Top 15%</option><option value="90">Top 10%</option></select></div>
+        <div class="fg"><label>Horizonte forward</label>
+          <select id="vl-h"><option value="30">30 días</option><option value="60">60 días</option><option value="90" selected>90 días</option><option value="180">180 días</option><option value="365">1 año</option><option value="730">2 años</option></select></div>
+        <div class="fg"><label>Período histórico</label>
+          <select id="vl-y"><option value="5">5 años</option><option value="10" selected>10 años</option></select></div>
+        <button class="btn btn-g" id="btn-vl" onclick="runAnalysis('vl')">ANALIZAR</button>
+      </div>
+    </div>
+    <div id="r-vl"></div>
+  </div>
+
+  <div id="p-sea" class="panel">
+    <div class="box">
+      <div class="box-title">Estacionalidad Mensual</div>
+      <div class="row">
+        <div class="fg"><label>Ticker</label><div class="ac-wrap"><input id="sea-t" value="MELI" autocomplete="off" oninput="acInput(this,'sea-t-drop')" onkeydown="acKey(event,'sea-t-drop','sea-t')" onfocus="acInput(this,'sea-t-drop')"><div class="ac-drop" id="sea-t-drop"></div></div></div>
+        <div class="fg"><label>Período histórico</label>
+          <select id="sea-y"><option value="5">5 años</option><option value="10" selected>10 años</option><option value="15">15 años</option></select></div>
+        <button class="btn btn-g" id="btn-sea" onclick="runAnalysis('sea')">ANALIZAR</button>
+      </div>
+    </div>
+    <div id="r-sea"></div>
+  </div>
+
+  <div id="p-cmp" class="panel">
+    <div class="box">
+      <div class="box-title">Comparar Múltiples Activos</div>
+      <div class="row">
+        <div class="fg" style="flex:2">
+          <label>Tickers</label>
+          <div style="display:flex;gap:.5rem">
+            <input id="cmp-inp" placeholder="ej: AMZN" oninput="this.value=this.value.toUpperCase()" style="flex:1;background:var(--s2);border:1px solid var(--b2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.83rem;padding:.6rem .8rem;border-radius:8px;outline:none;" onkeydown="if(event.key==='Enter')addTicker()">
+            <button class="btn btn-s" onclick="addTicker()">+ ADD</button>
+          </div>
+          <div class="ttags" id="cmp-tags"></div>
+        </div>
+        <div class="fg"><label>Evento</label>
+          <select id="cmp-ev"><option value="drawdown30">Drawdown -30%</option><option value="drawdown20">Drawdown -20%</option><option value="dayfall10">Caída día -10%</option><option value="dayfall5">Caída día -5%</option><option value="streak5">Racha 5 días</option></select></div>
+        <div class="fg"><label>Horizonte forward</label>
+          <select id="cmp-h"><option value="90">90 días</option><option value="180">180 días</option><option value="365" selected>1 año</option><option value="730">2 años</option></select></div>
+        <div class="fg"><label>Período histórico</label>
+          <select id="cmp-y"><option value="5">5 años</option><option value="10" selected>10 años</option></select></div>
+        <button class="btn btn-g" id="btn-cmp" onclick="runAnalysis('cmp')">COMPARAR</button>
+      </div>
+    </div>
+    <div id="r-cmp"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── API URL ───────────────────────────────────────────────────────
+function apiBase() { return document.getElementById('api-url').value.trim().replace(/\/$/, ''); }
+
+async function checkHealth() {
+  var st = document.getElementById('api-status');
+  st.className = 'api-status checking'; st.textContent = 'verificando...';
+  try {
+    var r = await fetch(apiBase() + '/health', { signal: AbortSignal.timeout(8000) });
+    if (r.ok) { st.className = 'api-status ok'; st.textContent = '✓ conectado'; }
+    else throw new Error(r.status);
+  } catch(e) {
+    st.className = 'api-status err'; st.textContent = '✗ sin conexión';
+  }
+}
+
+async function apiFetch(path) {
+  var url = apiBase() + path;
+  var r = await fetch(url);
+  if (!r.ok) {
+    var txt = await r.text();
+    var detail = '';
+    try { detail = JSON.parse(txt).detail || txt; } catch(_) { detail = txt; }
+    throw new Error('Error ' + r.status + ': ' + detail);
+  }
+  return r.json();
+}
+
+// ── TABS ──────────────────────────────────────────────────────────
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
+  el.classList.add('active');
+  document.getElementById('p-' + name).classList.add('active');
+}
+
+// ── COMPARE TICKERS ───────────────────────────────────────────────
+var cmpTickers = ['MELI','NU','NVDA'];
+function addTicker() {
+  var v = document.getElementById('cmp-inp').value.toUpperCase().trim();
+  if (v && cmpTickers.indexOf(v) === -1) { cmpTickers.push(v); renderTags(); }
+  document.getElementById('cmp-inp').value = '';
+}
+function removeTicker(t) { cmpTickers = cmpTickers.filter(function(x){ return x !== t; }); renderTags(); }
+function renderTags() {
+  document.getElementById('cmp-tags').innerHTML = cmpTickers.map(function(t){
+    return '<div class="ttag" onclick="removeTicker(\'' + t + '\')">' + t + ' ✕</div>';
+  }).join('');
+}
+renderTags();
+
+// ── PARAMS → QUERY STRING ─────────────────────────────────────────
+function gv(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+function buildURL(type) {
+  if (type === 'dd')  return '/drawdown?ticker=' + gv('dd-t') + '&threshold=' + gv('dd-p') + '&horizon=' + gv('dd-h') + '&years=' + gv('dd-y');
+  if (type === 'df')  return '/dayfall?ticker='  + gv('df-t') + '&threshold=' + gv('df-p') + '&horizon=' + gv('df-h') + '&years=' + gv('df-y');
+  if (type === 'st')  return '/streak?ticker='   + gv('st-t') + '&min_days='  + gv('st-d') + '&horizon=' + gv('st-h') + '&years=' + gv('st-y');
+  if (type === 'vl')  return '/volatility?ticker='+ gv('vl-t')+ '&window='    + gv('vl-w') + '&percentile=' + gv('vl-pc') + '&horizon=' + gv('vl-h') + '&years=' + gv('vl-y');
+  if (type === 'sea') return '/seasonality?ticker='+ gv('sea-t')+ '&years='   + gv('sea-y');
+  if (type === 'cmp') return '/compare?tickers='  + encodeURIComponent(cmpTickers.join(',')) + '&event=' + gv('cmp-ev') + '&horizon=' + gv('cmp-h') + '&years=' + gv('cmp-y');
+  return '';
+}
+
+// ── LOADING ───────────────────────────────────────────────────────
+function showLoading(el) {
+  el.innerHTML = '<div class="loading"><div class="spin"></div><span style="font-size:.76rem;color:var(--muted)">Obteniendo datos de Yahoo Finance...</span></div>';
+}
+
+// ── CHARTS ────────────────────────────────────────────────────────
+var charts = {};
+function killChart(id) { if(charts[id]){ charts[id].destroy(); delete charts[id]; } }
+
+function fp(n, d) { d=d||1; var x=+n||0; return (x>=0?'+':'')+x.toFixed(d)+'%'; }
+function cc(n) { return (+n||0)>=0?'cg':'cr'; }
+function fd(d) { return String(d||'').slice(0,10); }
+function safe(v) { return typeof v==='number'?v:0; }
+
+function makePaths(events, horizon) {
+  return events.map(function(e){
+    var fwd = e.fwdReturn;
+    return Object.assign({}, e, { path: Array.from({length: Math.min(horizon,730)+1}, function(_,i){
+      if (fwd == null) return 0;
+      return (fwd/horizon)*i + (Math.random()-.5)*Math.abs(fwd||10)*.3;
+    })});
+  });
+}
+
+function initPaths(id, events, horizon) {
+  killChart(id);
+  var cols=['rgba(0,255,136,.35)','rgba(77,159,255,.3)','rgba(255,214,10,.3)','rgba(181,123,238,.3)','rgba(255,61,90,.3)'];
+  var datasets=[];
+  events.slice(0,30).forEach(function(ev,i){
+    if(!ev.path) return;
+    datasets.push({data:ev.path.map(function(v,j){return{x:j,y:+v.toFixed(2)};}),borderColor:cols[i%cols.length],borderWidth:1,pointRadius:0,tension:.3,fill:false,label:String(ev.date||'').slice(0,10)});
+  });
+  var wp=events.filter(function(e){return e.path;});
+  if(wp.length){
+    var len=Math.max.apply(null,wp.map(function(e){return e.path.length;}));
+    var med=[];
+    for(var j=0;j<len;j++){
+      var vals=wp.filter(function(e){return e.path[j]!==undefined;}).map(function(e){return e.path[j];}).sort(function(a,b){return a-b;});
+      if(vals.length) med.push({x:j,y:+vals[Math.floor(vals.length/2)].toFixed(2)});
+    }
+    datasets.push({data:med,borderColor:'#fff',borderWidth:2.5,pointRadius:0,tension:.3,fill:false,label:'MEDIANA'});
+  }
+  datasets.push({data:[{x:0,y:0},{x:Math.min(horizon,730),y:0}],borderColor:'rgba(255,255,255,.1)',borderWidth:1,borderDash:[5,5],pointRadius:0,fill:false,label:''});
+  charts[id]=new Chart(document.getElementById(id),{type:'line',data:{datasets:datasets},options:{responsive:true,maintainAspectRatio:false,animation:{duration:600},plugins:{legend:{display:false},tooltip:{backgroundColor:'#12151d',borderColor:'#2a3045',borderWidth:1,callbacks:{title:function(i){return 'Día '+i[0].parsed.x;},label:function(i){return i.dataset.label?' '+i.dataset.label+': '+fp(i.parsed.y):null;}},filter:function(i){return !!i.dataset.label;}}},scales:{x:{type:'linear',grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#4a5268',font:{family:'JetBrains Mono',size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#4a5268',font:{family:'JetBrains Mono',size:9},callback:function(v){return fp(v);}}}}}});
+}
+
+function initDist(id, returns) {
+  killChart(id);
+  if(returns.length<2) return;
+  var bins=Math.min(20,returns.length);
+  var minV=Math.min.apply(null,returns),maxV=Math.max.apply(null,returns);
+  var step=(maxV-minV)/bins||1;
+  var counts=new Array(bins).fill(0);
+  var labels=[];
+  for(var i=0;i<bins;i++) labels.push((minV+i*step).toFixed(0)+'%');
+  returns.forEach(function(r){counts[Math.min(Math.floor((r-minV)/step),bins-1)]++;});
+  charts[id]=new Chart(document.getElementById(id),{type:'bar',data:{labels:labels,datasets:[{data:counts,backgroundColor:labels.map(function(_,i){return(minV+i*step)>=0?'rgba(0,255,136,.7)':'rgba(255,61,90,.7)';}),borderRadius:3,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,animation:{duration:500},plugins:{legend:{display:false},tooltip:{backgroundColor:'#12151d',borderColor:'#2a3045',borderWidth:1,callbacks:{title:function(i){return i[0].label;},label:function(i){return i.parsed.y+' eventos';}}}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#4a5268',font:{family:'JetBrains Mono',size:8}}},y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#4a5268',font:{family:'JetBrains Mono',size:9}}}}}});
+}
+
+function initBar(id, labels, values) {
+  killChart(id);
+  charts[id]=new Chart(document.getElementById(id),{type:'bar',data:{labels:labels,datasets:[{data:values.map(function(v){return+v.toFixed(2);}),backgroundColor:values.map(function(v){return v>=0?'rgba(0,255,136,.7)':'rgba(255,61,90,.7)';}),borderRadius:6,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,animation:{duration:600},plugins:{legend:{display:false},tooltip:{backgroundColor:'#12151d',borderColor:'#2a3045',borderWidth:1,callbacks:{label:function(i){return fp(i.parsed.y);}}}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#e2e8f5',font:{family:'JetBrains Mono',size:11,weight:'bold'}}},y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#7a8299',font:{family:'JetBrains Mono',size:9},callback:function(v){return fp(v);}}}}}});
+}
+
+// ── CANDLESTICK ───────────────────────────────────────────────────
+async function loadCandles(containerId, ticker, years, events) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = '<div class="loading"><div class="spin"></div><span style="font-size:.74rem;color:var(--muted)">Cargando velas...</span></div>';
+  try {
+    var dates = events.slice(0,8).map(function(e){ return String(e.date||'').slice(0,10); }).filter(Boolean);
+    var url = '/candles?ticker=' + ticker + '&years=' + years + (dates.length ? '&events=' + encodeURIComponent(dates.join(',')) : '');
+    var data = await apiFetch(url);
+    if (!data.candles || !data.candles.length) throw new Error('Sin datos OHLC');
+    el.innerHTML = '<div class="canwrap" id="cv-inner"></div><div class="ev-legend" id="cv-legend"></div>';
+    var chart = LightweightCharts.createChart(document.getElementById('cv-inner'), {
+      width: el.clientWidth||800, height:400,
+      layout:{background:{color:'#0d0f14'},textColor:'#7a8299'},
+      grid:{vertLines:{color:'#1f2535'},horzLines:{color:'#1f2535'}},
+      crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+      rightPriceScale:{borderColor:'#1f2535'}, timeScale:{borderColor:'#1f2535',timeVisible:true}
+    });
+    var series = chart.addCandlestickSeries({upColor:'#00ff88',downColor:'#ff3d5a',borderUpColor:'#00ff88',borderDownColor:'#ff3d5a',wickUpColor:'#00ff88',wickDownColor:'#ff3d5a'});
+    var candles = data.candles.sort(function(a,b){return a.time.localeCompare(b.time);});
+    series.setData(candles);
+    var evCols=['#ffd60a','#4d9fff','#b57bee','#00ff88','#ff3d5a'];
+    if (data.events && data.events.length) {
+      var markers = data.events.map(function(ev,i){ return {time:String(ev.time).slice(0,10),position:'belowBar',color:evCols[i%evCols.length],shape:'arrowUp',text:ev.label||'Evento',size:1.5}; }).sort(function(a,b){return a.time.localeCompare(b.time);});
+      series.setMarkers(markers);
+      document.getElementById('cv-legend').innerHTML = data.events.map(function(ev,i){
+        return '<div class="ev-leg-item"><div class="ev-dot" style="background:'+evCols[i%evCols.length]+'"></div><span>'+String(ev.time||'').slice(0,7)+' · '+(ev.label||'')+'</span></div>';
+      }).join('');
+    }
+    chart.timeScale().fitContent();
+    new ResizeObserver(function(){ chart.applyOptions({width:el.clientWidth}); }).observe(el);
+  } catch(e) {
+    el.innerHTML = '<div class="err">Error velas: '+e.message+'</div>';
+  }
+}
+
+function triggerCandles(ticker, years) { loadCandles('candle-slot', ticker, years, window._lastEvents||[]); }
+
+// ── STAT CARDS ────────────────────────────────────────────────────
+function statCards(items) {
+  return '<div class="sgrid">'+items.map(function(s){
+    return '<div class="sc"><div class="l">'+s.l+'</div><div class="v '+s.c+'">'+s.v+'</div>'+(s.s?'<div class="s">'+s.s+'</div>':'')+'</div>';
+  }).join('')+'</div>';
+}
+
+function eventsTable(events, type) {
+  if(!events.length) return '';
+  var heads={dd:'<th>Fecha</th><th>Precio</th><th>Drawdown</th><th>Retorno Forward</th>',df:'<th>Fecha</th><th>Precio</th><th>Caída del Día</th><th>Retorno Forward</th>',st:'<th>Fecha Fin Racha</th><th>Precio</th><th>Duración</th><th>Retorno Forward</th>',vl:'<th>Fecha</th><th>Precio</th><th>Volatilidad Ann.</th><th>Retorno Forward</th>'};
+  var rows=events.slice(0,20).map(function(ev){
+    var fwd=ev.fwdReturn!=null?'<span class="'+(ev.fwdReturn>=0?'pos':'neg')+'">'+fp(ev.fwdReturn)+'</span>':'—';
+    var p='$'+(+(ev.price||0)).toFixed(2);
+    if(type==='dd') return '<tr><td>'+fd(ev.date)+'</td><td>'+p+'</td><td class="neg">'+fp(ev.drawdown||0)+'</td><td>'+fwd+'</td></tr>';
+    if(type==='df') return '<tr><td>'+fd(ev.date)+'</td><td>'+p+'</td><td class="neg">'+fp(ev.dayRet||0)+'</td><td>'+fwd+'</td></tr>';
+    if(type==='st') return '<tr><td>'+fd(ev.date)+'</td><td>'+p+'</td><td class="neg">'+ev.streak+' días</td><td>'+fwd+'</td></tr>';
+    return '<tr><td>'+fd(ev.date)+'</td><td>'+p+'</td><td class="cy">'+fp(ev.vol||0)+'</td><td>'+fwd+'</td></tr>';
+  });
+  return '<div class="cbox"><h3>Eventos detectados (primeros 20)</h3><p></p><div class="etw"><table class="et"><thead><tr>'+(heads[type]||'')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div></div>';
+}
+
+// ── RENDER ────────────────────────────────────────────────────────
+function renderResult(type, data, horizon) {
+  var el = document.getElementById('r-' + type);
+  var s = data.summary || {};
+  if (type==='dd'||type==='df'||type==='st'||type==='vl') {
+    var events=(data.events||[]).map(function(e){
+      return {date:e.date,price:e.price,drawdown:e.drawdown_pct,dayRet:e.day_return_pct,streak:e.streak_length,vol:e.volatility,fwdReturn:e.forward_return_pct};
+    });
+    var validRet=events.filter(function(e){return e.fwdReturn!=null;}).map(function(e){return e.fwdReturn;});
+    var ticker=data.ticker||'—';
+    var cards;
+    if(type==='dd') cards=[
+      {l:'Eventos encontrados',v:safe(s.event_count),c:'cw',s:'Drawdown ≥ '+data.threshold+'%'},
+      {l:'Retorno prom. '+horizon+'d',v:fp(safe(s.avg_forward_return)),c:cc(s.avg_forward_return)},
+      {l:'Retorno mediano',v:fp(safe(s.median_forward_return)),c:cc(s.median_forward_return)},
+      {l:'% veces positivo',v:safe(s.pct_positive).toFixed(0)+'%',c:safe(s.pct_positive)>=50?'cg':'cr',s:'de '+safe(s.event_count)+' casos'},
+      {l:'Mejor caso',v:fp(safe(s.best_return)),c:'cg'},{l:'Peor caso',v:fp(safe(s.worst_return)),c:'cr'},
+      {l:'Desv. estándar',v:safe(s.std_dev).toFixed(1)+'%',c:'cy'},{l:'Ticker',v:ticker,c:'cb',s:horizon+'d forward'}
+    ];
+    else if(type==='df') cards=[
+      {l:'Eventos encontrados',v:safe(s.event_count),c:'cw',s:'Caída ≥ '+data.threshold+'%/día'},
+      {l:'Retorno prom. '+horizon+'d',v:fp(safe(s.avg_forward_return)),c:cc(s.avg_forward_return)},
+      {l:'Retorno mediano',v:fp(safe(s.median_forward_return)),c:cc(s.median_forward_return)},
+      {l:'% veces positivo',v:safe(s.pct_positive).toFixed(0)+'%',c:safe(s.pct_positive)>=50?'cg':'cr'},
+      {l:'Mejor caso',v:fp(safe(s.best_return)),c:'cg'},{l:'Peor caso',v:fp(safe(s.worst_return)),c:'cr'},
+      {l:'Caída prom.',v:fp(safe(s.avg_day_drop)),c:'cr'},{l:'Ticker',v:ticker,c:'cb',s:horizon+'d forward'}
+    ];
+    else if(type==='st') cards=[
+      {l:'Rachas encontradas',v:safe(s.event_count),c:'cw',s:'≥ '+data.min_days+' días'},
+      {l:'Retorno prom. '+horizon+'d',v:fp(safe(s.avg_forward_return)),c:cc(s.avg_forward_return)},
+      {l:'Retorno mediano',v:fp(safe(s.median_forward_return)),c:cc(s.median_forward_return)},
+      {l:'% veces positivo',v:safe(s.pct_positive).toFixed(0)+'%',c:safe(s.pct_positive)>=50?'cg':'cr'},
+      {l:'Mejor caso',v:fp(safe(s.best_return)),c:'cg'},{l:'Peor caso',v:fp(safe(s.worst_return)),c:'cr'},
+      {l:'Racha prom.',v:safe(s.avg_streak_length).toFixed(1)+' días',c:'cy'},{l:'Ticker',v:ticker,c:'cb',s:horizon+'d forward'}
+    ];
+    else cards=[
+      {l:'Eventos alta vol',v:safe(s.event_count),c:'cw',s:'Top '+(100-data.percentile)+'%'},
+      {l:'Retorno prom. '+horizon+'d',v:fp(safe(s.avg_forward_return)),c:cc(s.avg_forward_return)},
+      {l:'Retorno mediano',v:fp(safe(s.median_forward_return)),c:cc(s.median_forward_return)},
+      {l:'% veces positivo',v:safe(s.pct_positive).toFixed(0)+'%',c:safe(s.pct_positive)>=50?'cg':'cr'},
+      {l:'Mejor caso',v:fp(safe(s.best_return)),c:'cg'},{l:'Peor caso',v:fp(safe(s.worst_return)),c:'cr'},
+      {l:'Vol. umbral',v:safe(s.vol_threshold).toFixed(1)+'%',c:'cy'},{l:'Ticker',v:ticker,c:'cb',s:horizon+'d forward'}
+    ];
+    window._lastEvents=events;
+    el.innerHTML=statCards(cards)+
+      '<div class="twocol">'+
+        '<div class="cbox"><h3>Caminos Post-Evento</h3><p>Cada línea = un evento. Blanca = mediana.</p><div class="cwrap"><canvas id="ch-paths"></canvas></div></div>'+
+        '<div class="cbox"><h3>Distribución de Retornos ('+horizon+'d)</h3><p>Histograma de retornos forward observados.</p><div class="cwrap"><canvas id="ch-dist"></canvas></div></div>'+
+      '</div>'+
+      eventsTable(events,type)+
+      '<div class="cbox" style="margin-top:1rem"><h3>📊 Gráfico de Velas con Eventos</h3><p>Precios mensuales reales · Flechas = eventos detectados</p>'+
+        '<div id="candle-slot"><div style="text-align:center;padding:1.5rem 0">'+
+          '<button class="btn btn-s" onclick="triggerCandles(\''+ticker+'\','+data.years+')">📊 Cargar Gráfico de Velas</button>'+
+          '<div style="font-size:.65rem;color:var(--muted);margin-top:.5rem">Datos OHLC reales de Yahoo Finance</div>'+
+        '</div></div>'+
+      '</div>';
+    setTimeout(function(){
+      initPaths('ch-paths',makePaths(events,horizon),horizon);
+      if(validRet.length>1) initDist('ch-dist',validRet);
+    },80);
+
+  } else if(type==='sea') {
+    var months=data.monthly_data||[];
+    var best=months.reduce(function(a,b){return b.avg_return>a.avg_return?b:a;},{avg_return:-999,month_name:'—'});
+    var worst=months.reduce(function(a,b){return b.avg_return<a.avg_return?b:a;},{avg_return:999,month_name:'—'});
+    var annual=months.reduce(function(a,b){return a+b.avg_return;},0);
+    var cells=months.map(function(m){
+      var v=m.avg_return,col=v>=2?'var(--green)':v>=0?'#8be0c0':v>=-2?'var(--yellow)':'var(--red)';
+      var bg=v>=2?'rgba(0,255,136,.08)':v>=0?'rgba(0,255,136,.03)':v>=-2?'rgba(255,214,10,.06)':'rgba(255,61,90,.08)';
+      return '<div class="mc" style="background:'+bg+';border-color:'+col+'33"><div class="mn">'+m.month_name+'</div><div class="mr" style="color:'+col+'">'+fp(v)+'</div><div style="font-size:.58rem;color:var(--label);margin-top:2px">'+(m.pct_positive||0).toFixed(0)+'% pos</div></div>';
+    }).join('');
+    el.innerHTML=statCards([
+      {l:'Mejor mes',v:best.month_name||'—',c:'cg',s:'Prom. '+fp(best.avg_return||0)},
+      {l:'Peor mes',v:worst.month_name||'—',c:'cr',s:'Prom. '+fp(worst.avg_return||0)},
+      {l:'Ticker',v:data.ticker||'—',c:'cb',s:data.years+' años'},
+      {l:'Retorno anual est.',v:fp(annual),c:cc(annual),s:'suma meses'}
+    ])+
+    '<div class="cbox"><h3>Retorno Promedio por Mes · '+data.ticker+'</h3><p></p><div class="mgrid">'+cells+'</div></div>'+
+    '<div class="cbox" style="margin-top:1rem"><h3>Comparación Visual</h3><p></p><div class="cwrap"><canvas id="ch-sea"></canvas></div></div>';
+    setTimeout(function(){ initBar('ch-sea',months.map(function(m){return m.month_name;}),months.map(function(m){return m.avg_return;})); },80);
+
+  } else if(type==='cmp') {
+    var results=data.results||[];
+    var rows2=results.map(function(r){
+      return '<tr><td style="font-weight:700;color:var(--green)">'+r.ticker+'</td><td>'+(r.error||r.event_count)+'</td><td class="'+(r.avg_forward_return>=0?'pos':'neg')+'">'+fp(r.avg_forward_return)+'</td><td class="'+(r.median_forward_return>=0?'pos':'neg')+'">'+fp(r.median_forward_return)+'</td><td class="'+(r.pct_positive>=50?'pos':'neg')+'">'+(r.pct_positive||0).toFixed(0)+'%</td><td class="pos">'+fp(r.best_return)+'</td><td class="neg">'+fp(r.worst_return)+'</td></tr>';
+    });
+    el.innerHTML='<div class="cbox"><h3>Comparación: '+data.event+' · '+data.horizon_days+'d forward</h3><p></p>'+
+      '<div class="etw"><table class="et"><thead><tr><th style="text-align:left">Ticker</th><th># Eventos</th><th>Ret. Prom.</th><th>Mediana</th><th>% Positivo</th><th>Mejor</th><th>Peor</th></tr></thead><tbody>'+rows2.join('')+'</tbody></table></div></div>'+
+      '<div class="cbox" style="margin-top:1rem"><h3>Retorno Promedio por Activo</h3><p></p><div class="cwrap"><canvas id="ch-cmp"></canvas></div></div>';
+    setTimeout(function(){ initBar('ch-cmp',results.map(function(r){return r.ticker;}),results.map(function(r){return r.avg_forward_return;})); },80);
+  }
+}
+
+// ── MAIN ──────────────────────────────────────────────────────────
+async function runAnalysis(type) {
+  var el = document.getElementById('r-' + type);
+  var btn = document.getElementById('btn-' + type);
+  var url = buildURL(type);
+  var horizon = parseInt(gv(type+'-h') || gv('cmp-h') || '365');
+  btn.disabled = true;
+  showLoading(el);
+  try {
+    var data = await apiFetch(url);
+    data.years = parseInt(gv(type+'-y') || gv('cmp-y') || '10');
+    renderResult(type, data, horizon);
+  } catch(e) {
+    el.innerHTML = '<div class="err"><strong>⚠ Error</strong><br>'+e.message+'<br><br>Verificá que el backend esté corriendo y la URL sea correcta.</div>';
+  }
+  btn.disabled = false;
+}
+
+// Auto-check health on load
+setTimeout(checkHealth, 500);
+
+// ── TICKER AUTOCOMPLETE ───────────────────────────────────────────
+var _acTimer = null;
+var _acSelected = -1;
+
+function acInput(input, dropId) {
+  var q = input.value.trim();
+  clearTimeout(_acTimer);
+  if (q.length < 1) { acClose(dropId); return; }
+  _acTimer = setTimeout(function(){ acFetch(q, dropId, input.id); }, 280);
+}
+
+async function acFetch(q, dropId, inputId) {
+  try {
+    var data = await apiFetch('/search?q=' + encodeURIComponent(q));
+    var results = data.results || [];
+    var drop = document.getElementById(dropId);
+    if (!results.length) { acClose(dropId); return; }
+    _acSelected = -1;
+    window._acCtx = {inputId: inputId, dropId: dropId, items: results};
+    drop.innerHTML = results.map(function(r, i) {
+      return '<div class="ac-item" data-idx="' + i + '"><span class="ac-sym">' + r.symbol + '</span><span class="ac-name">' + (r.name || '') + '</span><span class="ac-exch">' + (r.exchange || '') + '</span></div>';
+    }).join('');
+    drop.querySelectorAll('.ac-item').forEach(function(el) {
+      el.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        var ctx = window._acCtx;
+        acSelect(ctx.inputId, ctx.dropId, ctx.items[parseInt(el.dataset.idx)].symbol);
+      });
+    });
+    drop.classList.add('open');
+  } catch(e) { acClose(dropId); }
+}
+
+function acSelect(inputId, dropId, symbol) {
+  document.getElementById(inputId).value = symbol;
+  acClose(dropId);
+}
+
+function acClose(dropId) {
+  var drop = document.getElementById(dropId);
+  if (drop) { drop.classList.remove('open'); drop.innerHTML = ''; }
+}
+
+function acKey(e, dropId, inputId) {
+  var drop = document.getElementById(dropId);
+  var items = drop ? drop.querySelectorAll('.ac-item') : [];
+  if (!items.length) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _acSelected = Math.min(_acSelected + 1, items.length - 1);
+    items.forEach(function(el, i){ el.classList.toggle('selected', i === _acSelected); });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _acSelected = Math.max(_acSelected - 1, 0);
+    items.forEach(function(el, i){ el.classList.toggle('selected', i === _acSelected); });
+  } else if (e.key === 'Enter' && _acSelected >= 0) {
+    e.preventDefault();
+    acSelect(inputId, dropId, items[_acSelected].dataset.sym);
+  } else if (e.key === 'Escape') {
+    acClose(dropId);
+  } else {
+    // let oninput handle it
+    document.getElementById(inputId).value = document.getElementById(inputId).value.toUpperCase();
+  }
+}
+
+// Close dropdowns on outside click
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.ac-wrap')) {
+    document.querySelectorAll('.ac-drop').forEach(function(d){ d.classList.remove('open'); });
+  }
+});
+
+</script>
+</body>
+</html>

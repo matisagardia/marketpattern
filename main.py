@@ -156,20 +156,25 @@ def drawdown(ticker: str, threshold: float = 30, horizon: int = 365, years: int 
     df = get_history_cached(ticker, years)
     closes = df["close"]
     events = []
+
+    # ONE event per drawdown episode = the first day it crosses the threshold.
+    # Episode ends when price recovers above threshold level from that peak.
     peak = closes.iloc[0]
-    in_drawdown = False
+    in_episode = False
 
     for i in range(1, len(closes)):
         price = closes.iloc[i]
-        if price > peak:
-            peak = price
-            in_drawdown = False
+
+        if not in_episode:
+            if price > peak:
+                peak = price
+
         dd_pct = (price / peak - 1) * 100
-        if dd_pct <= -threshold and not in_drawdown:
-            in_drawdown = True
-        if in_drawdown:
-            is_bottom = (i == len(closes) - 1) or (closes.iloc[i + 1] > price)
-            if is_bottom:
+
+        if dd_pct <= -threshold:
+            if not in_episode:
+                # First crossing: record one event for this episode
+                in_episode = True
                 fwd = forward_return(df, i, horizon)
                 events.append({
                     "date": df.index[i].strftime("%Y-%m-%d"),
@@ -177,7 +182,11 @@ def drawdown(ticker: str, threshold: float = 30, horizon: int = 365, years: int 
                     "drawdown_pct": safe(dd_pct),
                     "forward_return_pct": safe(fwd) if fwd is not None else None,
                 })
-                in_drawdown = False
+        else:
+            if in_episode:
+                # Recovery: episode over, resume tracking peak from here
+                peak = price
+                in_episode = False
 
     valid_returns = [e["forward_return_pct"] for e in events if e["forward_return_pct"] is not None]
     return {"ticker": ticker, "analysis_type": "drawdown", "threshold": threshold,
