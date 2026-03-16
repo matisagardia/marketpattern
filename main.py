@@ -51,7 +51,7 @@ async def fetch_av(ticker: str) -> pd.DataFrame:
         raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured. Add AV_KEY env var in Render.")
     url = "https://www.alphavantage.co/query"
     params = {
-        "function": "TIME_SERIES_DAILY_ADJUSTED",
+        "function": "TIME_SERIES_DAILY",
         "symbol": ticker,
         "outputsize": "full",
         "datatype": "json",
@@ -77,7 +77,7 @@ async def fetch_av(ticker: str) -> pd.DataFrame:
             "open":  float(vals.get("1. open", 0)),
             "high":  float(vals.get("2. high", 0)),
             "low":   float(vals.get("3. low", 0)),
-            "close": float(vals.get("5. adjusted close", vals.get("4. close", 0))),
+            "close": float(vals.get("4. close", 0)),
         })
     df = pd.DataFrame(rows).set_index("date").sort_index()
     df = df.dropna()
